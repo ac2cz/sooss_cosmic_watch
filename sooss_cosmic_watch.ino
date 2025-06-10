@@ -21,7 +21,7 @@
 #include <SPI.h>
 #include <EEPROM.h>
 
-const byte OLED = 1;                      // Turn on/off the OLED [1,0]
+const byte OLED = 0;                      // Turn on/off the OLED [1,0]
 
 const int SIGNAL_THRESHOLD      = 50;    // Min threshold to trigger on. See calibration.pdf for conversion to mV.
 const int RESET_THRESHOLD       = 25;    
@@ -64,6 +64,9 @@ byte SLAVE;
 byte MASTER;
 byte keep_pulse                               = 0;
 
+float count_average                   = 0;
+float count_std                       = 0;
+
 void setup() {
   analogReference (EXTERNAL);
   ADCSRA &= ~(bit (ADPS0) | bit (ADPS1) | bit (ADPS2));  // clear prescaler bits
@@ -96,11 +99,11 @@ void setup() {
   digitalWrite(3,LOW);
   if (MASTER == 1) {digitalWrite(6, LOW);}
 
-  Serial.println(F("##########################################################################################"));
-  Serial.println(F("### CosmicWatch: The Desktop Muon Detector"));
-  Serial.println(F("### Questions? saxani@mit.edu"));
-  Serial.println(F("### Comp_date Comp_time Event Ardn_time[ms] ADC[0-1023] SiPM[mV] Deadtime[ms] Temp[C] Name"));
-  Serial.println(F("##########################################################################################"));
+  //Serial.println(F("##########################################################################################"));
+  //Serial.println(F("### CosmicWatch: The Desktop Muon Detector"));
+  //Serial.println(F("### Questions? saxani@mit.edu"));
+  Serial.println(F("### Count Comp_time Rate Rate_std SiPM[mV] Deadtime[ms] Temp[C]"));
+  //Serial.println(F("##########################################################################################"));
 
   get_detector_name(detector_name);
   Serial.println(detector_name);
@@ -113,8 +116,7 @@ void setup() {
   
 }
 
-void loop()
-{
+void loop() {
   while (1){
     if (analogRead(A0) > SIGNAL_THRESHOLD){ 
 
@@ -147,18 +149,17 @@ void loop()
       // Measure the temperature, voltage reference is currently set to 3.3V
       temperatureC = (((analogRead(A3)+analogRead(A3)+analogRead(A3))/3. * (3300./1024)) - 500.)/10. ;
 
-      
       // Measure deadtime
       measurement_deadtime = total_deadtime;
       time_stamp = millis() - start_time;
-      
       
       // If you are within 15 miliseconds away from updating the OLED screen, we'll let if finish 
       if((interrupt_timer + 1000 - millis()) < 15){ 
           waiting_t1 = millis();
           waiting_for_interupt = 1;
           delay(30);
-          waiting_for_interupt = 0;}
+          waiting_for_interupt = 0;
+        }
 
       measurement_t1 = micros();
       
@@ -166,45 +167,51 @@ void loop()
           analogWrite(3, LED_BRIGHTNESS);
           sipm_voltage = get_sipm_voltage(adc);
           last_sipm_voltage = sipm_voltage; 
-          Serial.println((String)count + " " + time_stamp+ " " + adc+ " " + sipm_voltage+ " " + measurement_deadtime+ " " + temperatureC);}
+          Serial.println("M " + (String)count + " " + time_stamp+ " " + count_average+ " " + count_std + " " + sipm_voltage+ " " + measurement_deadtime+ " " + temperatureC);
+        }
   
       if (SLAVE == 1) {
           if (keep_pulse == 1) {   
               analogWrite(3, LED_BRIGHTNESS);
               sipm_voltage = get_sipm_voltage(adc);
               last_sipm_voltage = sipm_voltage; 
-              Serial.println((String)count + " " + time_stamp+ " " + adc+ " " + sipm_voltage + " " + measurement_deadtime+ " " + temperatureC);}}
+              Serial.println("S " + (String)count + " " + time_stamp+ " " + count_average+ " " + count_std + " " + sipm_voltage + " " + measurement_deadtime+ " " + temperatureC);
+            }
+        }
       
       keep_pulse = 0;
       digitalWrite(3, LOW);
-      while(analogRead(A0) > RESET_THRESHOLD){continue;}
-      total_deadtime += (micros() - measurement_t1) / 1000.;}}
+      while(analogRead(A0) > RESET_THRESHOLD){continue;
+      }
+      total_deadtime += (micros() - measurement_t1) / 1000.;
+    }
+  }
 }
 
-void timerIsr() 
-{
+void timerIsr() {
   interrupts();
   interrupt_timer                       = millis();
   if (waiting_for_interupt == 1){
       total_deadtime += (millis() - waiting_t1);}
   waiting_for_interupt = 0;
-  if (OLED == 1){
-      get_time();}
-}
 
-void get_time() 
-{
-  unsigned long int OLED_t1             = micros();
-  float count_average                   = 0;
-  float count_std                       = 0;
-
+  /* calculate the rate here so we can print it even if oled not used */
   if (count > 0.) {
       count_average   = count / ((interrupt_timer - start_time - total_deadtime) / 1000.);
-      count_std       = sqrt(count) / ((interrupt_timer - start_time - total_deadtime) / 1000.);}
-  else {
+      count_std       = sqrt(count) / ((interrupt_timer - start_time - total_deadtime) / 1000.);
+  } else {
       count_average   = 0;
-      count_std       = 0;}
-  
+      count_std       = 0;
+  }
+
+  if (OLED == 1){
+      get_time();
+  }
+}
+
+void get_time() {
+  unsigned long int OLED_t1             = micros();
+
   display.setCursor(0, 0);
   display.clearDisplay();
   display.print(F("Total Count: "));
@@ -254,8 +261,7 @@ void get_time()
   total_deadtime                      += (micros() - OLED_t1 +73)/1000.;
 }
 
-void OpeningScreen(void) 
-{
+void OpeningScreen(void) {
     display.setTextSize(2);
     display.setTextColor(WHITE);
     display.setCursor(8, 0);
@@ -268,8 +274,7 @@ void OpeningScreen(void)
 
 
 // This function converts the measured ADC value to a SiPM voltage via the calibration array
-float get_sipm_voltage(float adc_value)
-{
+float get_sipm_voltage(float adc_value) {
   float voltage = 0;
   for (int i = 0; i < (sizeof(cal)/sizeof(float)); i++) {
     voltage += cal[i] * pow(adc_value,(sizeof(cal)/sizeof(float)-i-1));
@@ -278,8 +283,7 @@ float get_sipm_voltage(float adc_value)
 }
 
 // This function reads the EEPROM to get the detector ID
-boolean get_detector_name(char* det_name) 
-{
+boolean get_detector_name(char* det_name) {
     byte ch;                              // byte read from eeprom
     int bytesRead = 0;                    // number of bytes read so far
     ch = EEPROM.read(bytesRead);          // read next byte from eeprom
