@@ -175,7 +175,7 @@ void loop() {
               analogWrite(3, LED_BRIGHTNESS);
               sipm_voltage = get_sipm_voltage(adc);
               last_sipm_voltage = sipm_voltage; 
-              Serial.println("S " + (String)count + " " + time_stamp+ " " + count_average+ " " + count_std + " " + sipm_voltage + " " + measurement_deadtime+ " " + temperatureC);
+              Serial.println("S " + (String)count + " " + time_stamp+ " " + count_average + " " + sipm_voltage + " " + measurement_deadtime+ " " + temperatureC);
             }
         }
       
