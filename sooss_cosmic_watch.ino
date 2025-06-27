@@ -36,6 +36,8 @@ const int cal_max = 1023;
 
 //INTERUPT SETUP
 #define TIMER_INTERVAL 1000000          // Every 1,000,000 us the timer will update the OLED readout
+#define WINDOW_SIZE 60  // 60 seconds for 1-minute window
+#define MAX_EVENTS_PER_SEC 100  // Adjust based on expected event rate
 
 //OLED SETUP
 #define OLED_RESET 10
@@ -56,6 +58,7 @@ unsigned long measurement_t2;
 
 float sipm_voltage                            = 0;
 long int count                                = 0L;      // A tally of the number of muon counts observed
+long int last_count                           = 0L;      // A record of the count when we last called the interrupt 
 float last_sipm_voltage                       = 0;
 float temperatureC;
 
@@ -64,8 +67,14 @@ byte SLAVE;
 byte MASTER;
 byte keep_pulse                               = 0;
 
-float count_average                   = 0;
-float count_std                       = 0;
+//float count_average                   = 0;
+//float count_std                       = 0;
+
+/* To calculate the event counts in the interrupt using circular buffer */
+volatile int event_count_buffer[WINDOW_SIZE];
+volatile int current_second = 0;
+volatile int current_events = 0;
+volatile bool minute_complete = false;
 
 void setup() {
   analogReference (EXTERNAL);
@@ -93,9 +102,10 @@ void setup() {
       display.setRotation(2);         // Upside down screen (0 is right-side-up)
       OpeningScreen();                // Run the splash screen on start-up
       delay(2000);                    // Delay some time to show the logo, and keep the Pin6 HIGH for coincidence
-      display.setTextSize(1);}
-
-  else {delay(2000);}
+      display.setTextSize(1);
+  } else {
+    delay(2000);
+  }
   digitalWrite(3,LOW);
   if (MASTER == 1) {digitalWrite(6, LOW);}
 
@@ -167,7 +177,7 @@ void loop() {
           analogWrite(3, LED_BRIGHTNESS);
           sipm_voltage = get_sipm_voltage(adc);
           last_sipm_voltage = sipm_voltage; 
-          Serial.println("M " + (String)count + " " + time_stamp+ " " + count_average+ " " + count_std + " " + sipm_voltage+ " " + measurement_deadtime+ " " + temperatureC);
+          Serial.println("M " + (String)count + " " + time_stamp+ " " + get_average_count()+ " " + sipm_voltage+ " " + measurement_deadtime+ " " + temperatureC);
         }
   
       if (SLAVE == 1) {
@@ -175,7 +185,7 @@ void loop() {
               analogWrite(3, LED_BRIGHTNESS);
               sipm_voltage = get_sipm_voltage(adc);
               last_sipm_voltage = sipm_voltage; 
-              Serial.println("S " + (String)count + " " + time_stamp+ " " + count_average + " " + sipm_voltage + " " + measurement_deadtime+ " " + temperatureC);
+              Serial.println("S " + (String)count + " " + time_stamp+ " " + get_average_count() + " " + sipm_voltage + " " + measurement_deadtime+ " " + temperatureC);
             }
         }
       
@@ -188,6 +198,15 @@ void loop() {
   }
 }
 
+int get_average_count() {
+  int tot = 0;
+  int i;
+  for (i=0; i< WINDOW_SIZE; i++)
+      tot = tot + event_count_buffer[i];
+  return tot;
+}
+
+/* Interrupt is called every second */
 void timerIsr() {
   interrupts();
   interrupt_timer                       = millis();
@@ -195,18 +214,23 @@ void timerIsr() {
       total_deadtime += (millis() - waiting_t1);}
   waiting_for_interupt = 0;
 
-  /* calculate the rate here so we can print it even if oled not used */
-  if (count > 0.) {
-      count_average   = count / ((interrupt_timer - start_time - total_deadtime) / 1000.);
-      count_std       = sqrt(count) / ((interrupt_timer - start_time - total_deadtime) / 1000.);
-  } else {
-      count_average   = 0;
-      count_std       = 0;
-  }
+  /* calculate the rate here */
+  event_count_buffer[current_second++] = count - last_count;
+  if (current_second == WINDOW_SIZE)
+      current_second = 0;
+  last_count = count;
 
-  if (OLED == 1){
-      get_time();
-  }
+  // if (count > 0.) {
+  //     count_average   = count / ((interrupt_timer - start_time - total_deadtime) / 1000.);
+  //     count_std       = sqrt(count) / ((interrupt_timer - start_time - total_deadtime) / 1000.);
+  // } else {
+  //     count_average   = 0;
+  //     count_std       = 0;
+  // }
+
+  // if (OLED == 1){
+  //     get_time();
+  // }
 }
 
 void get_time() {
@@ -246,17 +270,17 @@ void get_time() {
   char tmp_average[4];
   char tmp_std[4];
 
-  int decimals = 2;
-  if (count_average < 10) {decimals = 3;}
+  // int decimals = 2;
+  // if (count_average < 10) {decimals = 3;}
   
-  dtostrf(count_average, 1, decimals, tmp_average);
-  dtostrf(count_std, 1, decimals, tmp_std);
+  // dtostrf(count_average, 1, decimals, tmp_average);
+  // dtostrf(count_std, 1, decimals, tmp_std);
    
-  display.print(F("Rate: "));
-  display.print((String)tmp_average);
-  display.print(F("+/-"));
-  display.println((String)tmp_std);
-  display.display();
+  // display.print(F("Rate: "));
+  // display.print((String)tmp_average);
+  // display.print(F("+/-"));
+  // display.println((String)tmp_std);
+  // display.display();
   
   total_deadtime                      += (micros() - OLED_t1 +73)/1000.;
 }
