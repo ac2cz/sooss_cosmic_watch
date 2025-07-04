@@ -1,7 +1,7 @@
 /*
   CosmicWatch Desktop Muon Detector Arduino Code
 
-  This code does not use the microSD card reader/writer, but does used the OLED screen.
+  This code does not use the microSD card reader/writer or OLED screen.
   
   Questions?
   Spencer N. Axani
@@ -35,13 +35,12 @@ const long double cal[] = {-9.085681659276021e-27, 4.6790804314609205e-23, -1.03
 const int cal_max = 1023;
 
 //INTERUPT SETUP
-#define TIMER_INTERVAL 1000000          // Every 1,000,000 us the timer will update the OLED readout
-#define WINDOW_SIZE 60  // 60 seconds for 1-minute window
-#define MAX_EVENTS_PER_SEC 100  // Adjust based on expected event rate
+#define TIMER_INTERVAL 1000000          // Every 1,000,000 us the timer will trigger interrupt
+#define WINDOW_SIZE 60  // 60 seconds for 1-minute window to measure the rate
 
 //OLED SETUP
 #define OLED_RESET 10
-Adafruit_SSD1306 display(OLED_RESET);
+//Adafruit_SSD1306 display(OLED_RESET);
 
 //initialize variables
 char detector_name[40];
@@ -82,32 +81,36 @@ void setup() {
   ADCSRA |= bit (ADPS0) | bit (ADPS1);                   // Set prescaler to 8
   Serial.begin(9600);
   
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);                               
+  get_detector_name(detector_name);
+
+  //display.begin(SSD1306_SWITCHCAPVCC, 0x3C);                               
   pinMode(3, OUTPUT);
   pinMode(6, INPUT);
   if (digitalRead(6) == HIGH) {
       SLAVE = 1;
       MASTER = 0;
       digitalWrite(3,HIGH);
-      delay(1000);}
-
-  else{
-      delay(10);
+      delay(1000);
+  } else{
+      //delay(10);
       MASTER = 1;
       SLAVE = 0;
       pinMode(6, OUTPUT);
-      digitalWrite(6, HIGH);}
-
-  if (OLED == 1){
-      display.setRotation(2);         // Upside down screen (0 is right-side-up)
-      OpeningScreen();                // Run the splash screen on start-up
-      delay(2000);                    // Delay some time to show the logo, and keep the Pin6 HIGH for coincidence
-      display.setTextSize(1);
-  } else {
-    delay(2000);
+      digitalWrite(6, HIGH);
   }
+
+  // if (OLED == 1){
+  //     display.setRotation(2);         // Upside down screen (0 is right-side-up)
+  //     OpeningScreen();                // Run the splash screen on start-up
+  //     delay(2000);                    // Delay some time to show the logo, and keep the Pin6 HIGH for coincidence
+  //     display.setTextSize(1);
+  // } else {
+  delay(3000);
+  // }
   digitalWrite(3,LOW);
-  if (MASTER == 1) {digitalWrite(6, LOW);}
+  if (MASTER == 1) {
+    digitalWrite(6, LOW);
+  }
 
   //Serial.println(F("##########################################################################################"));
   //Serial.println(F("### CosmicWatch: The Desktop Muon Detector"));
@@ -115,7 +118,7 @@ void setup() {
   Serial.println(F("### Count Comp_time Rate Rate_std SiPM[mV] Deadtime[ms] Temp[C]"));
   //Serial.println(F("##########################################################################################"));
 
-  get_detector_name(detector_name);
+  
   Serial.println(detector_name);
   get_time();
   delay(900);
@@ -236,11 +239,11 @@ void timerIsr() {
 void get_time() {
   unsigned long int OLED_t1             = micros();
 
-  display.setCursor(0, 0);
-  display.clearDisplay();
-  display.print(F("Total Count: "));
-  display.println(count);
-  display.print(F("Uptime: "));
+  // display.setCursor(0, 0);
+  // display.clearDisplay();
+  // display.print(F("Total Count: "));
+  // display.println(count);
+  // display.print(F("Uptime: "));
 
   int minutes                 = ((interrupt_timer - start_time) / 1000 / 60) % 60;
   int seconds                 = ((interrupt_timer - start_time) / 1000) % 60;
@@ -250,22 +253,22 @@ void get_time() {
   sprintf(min_char, "%02d", minutes);
   sprintf(sec_char, "%02d", seconds);
 
-  display.println((String) ((interrupt_timer - start_time) / 1000 / 3600) + ":" + min_char + ":" + sec_char);
+  // display.println((String) ((interrupt_timer - start_time) / 1000 / 3600) + ":" + min_char + ":" + sec_char);
 
-  if (count == 0) {
-    display.println("Hi, I'm "+(String)detector_name);
-    }
-      //if (MASTER == 1) {display.println(F("::---  MASTER   ---::"));}
-      //if (SLAVE  == 1) {display.println(F("::---   SLAVE   ---::"));}}
+  // if (count == 0) {
+  //   display.println("Hi, I'm "+(String)detector_name);
+  //   }
+  //     //if (MASTER == 1) {display.println(F("::---  MASTER   ---::"));}
+  //     //if (SLAVE  == 1) {display.println(F("::---   SLAVE   ---::"));}}
       
-  else{
-      if (last_sipm_voltage > 180){
-          display.print(F("===---- WOW! ----==="));}
-      else{
-            if (MASTER == 1) {display.print(F("M"));}
-            if (SLAVE  == 1) {display.print(F("S"));}
-            for (int i = 1; i <=  (last_sipm_voltage + 10) / 10; i++) {display.print(F("-"));}}
-      display.println(F(""));}
+  // else{
+  //     if (last_sipm_voltage > 180){
+  //         display.print(F("===---- WOW! ----==="));}
+  //     else{
+  //           if (MASTER == 1) {display.print(F("M"));}
+  //           if (SLAVE  == 1) {display.print(F("S"));}
+  //           for (int i = 1; i <=  (last_sipm_voltage + 10) / 10; i++) {display.print(F("-"));}}
+  //     display.println(F(""));}
 
   char tmp_average[4];
   char tmp_std[4];
@@ -285,16 +288,16 @@ void get_time() {
   total_deadtime                      += (micros() - OLED_t1 +73)/1000.;
 }
 
-void OpeningScreen(void) {
-    display.setTextSize(2);
-    display.setTextColor(WHITE);
-    display.setCursor(8, 0);
-    display.clearDisplay();
-    display.print(F("Cosmic \n     Watch"));
-    display.display();
-    display.setTextSize(1);
-    display.clearDisplay();
-}
+// void OpeningScreen(void) {
+//     display.setTextSize(2);
+//     display.setTextColor(WHITE);
+//     display.setCursor(8, 0);
+//     display.clearDisplay();
+//     display.print(F("Cosmic \n     Watch"));
+//     display.display();
+//     display.setTextSize(1);
+//     display.clearDisplay();
+// }
 
 
 // This function converts the measured ADC value to a SiPM voltage via the calibration array
